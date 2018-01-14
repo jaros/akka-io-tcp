@@ -31,7 +31,7 @@ class Listener extends Actor {
           if (data.utf8String == "all-sent") {
             context.unbecome()
           } else {
-
+            // buffer and save
           }
           log.debug("got some data")
 //          sender() ! "close"
@@ -62,7 +62,7 @@ class Client(remote: InetSocketAddress, listener: ActorRef) extends Actor {
     case c@Connected(remote, local) ⇒
       listener ! c
       val connection = sender()
-      connection ! Register(self)
+      connection ! Register(self, keepOpenOnPeerClosed = false)
       context become {
         case data: ByteString ⇒
           connection ! Write(data)
