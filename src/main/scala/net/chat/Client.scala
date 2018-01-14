@@ -3,6 +3,7 @@ package net.chat
 import java.net.InetSocketAddress
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.event.Logging
 import akka.io.Tcp.Connected
 import akka.io.{IO, Tcp}
 import akka.util.ByteString
@@ -16,20 +17,27 @@ object ClientRunner extends App {
 }
 
 class Listener extends Actor {
+
+  val log = Logging(context.system, this)
+
   override def receive: Receive = {
-    case msg: String =>
+    case msg: String ⇒
       println(msg)
-    case Connected(remote, _) =>
-      println(s"successfully connected to $remote")
-      sender() ! ByteString("hello")
+    case Connected(remote, _) ⇒
+      log.info(s"successfully connected to $remote")
+      sender() ! ByteString("start")
       context become {
-        case data: ByteString =>
-          println(data.utf8String)
-          sender() ! "close"
-          context.unbecome()
+        case data: ByteString ⇒
+          if (data.utf8String == "all-sent") {
+            context.unbecome()
+          } else {
+
+          }
+          log.debug("got some data")
+//          sender() ! "close"
       }
-    case x@_ =>
-      println(s"unknown message: $x")
+    case x@_ ⇒
+      log.info(s"unknown message: $x")
   }
 
 }
@@ -47,25 +55,25 @@ class Client(remote: InetSocketAddress, listener: ActorRef) extends Actor {
   IO(Tcp) ! Connect(remote)
 
   def receive = {
-    case CommandFailed(_: Connect) =>
+    case CommandFailed(_: Connect) ⇒
       listener ! "connect failed"
       context stop self
 
-    case c@Connected(remote, local) =>
+    case c@Connected(remote, local) ⇒
       listener ! c
       val connection = sender()
       connection ! Register(self)
       context become {
-        case data: ByteString =>
+        case data: ByteString ⇒
           connection ! Write(data)
-        case CommandFailed(w: Write) =>
+        case CommandFailed(w: Write) ⇒
           // O/S buffer was full
           listener ! "write failed"
-        case Received(data) =>
+        case Received(data) ⇒
           listener ! data
-        case "close" =>
+        case "close" ⇒
           connection ! Close
-        case _: ConnectionClosed =>
+        case _: ConnectionClosed ⇒
           listener ! "connection closed"
           context stop self
       }
