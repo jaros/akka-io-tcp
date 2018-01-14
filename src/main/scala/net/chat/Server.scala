@@ -1,7 +1,7 @@
 package net.chat
 
 import java.net.InetSocketAddress
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Paths}
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.event.Logging
@@ -15,7 +15,7 @@ object ServerRunner extends App {
 
   val server: ActorRef = system.actorOf(Props[Server], "serverActor")
 
-  case class Ack(file: Path) extends Tcp.Event
+  case class Ack(msg: String) extends Tcp.Event
 
 }
 
@@ -27,13 +27,13 @@ class Server extends Actor {
   IO(Tcp) ! Bind(self, new InetSocketAddress("localhost", 9999))
 
   def receive = {
-    case b@Bound(localAddress) =>
+    case b@Bound(_) ⇒
       context.parent ! b
 
-    case CommandFailed(_: Bind) =>
+    case CommandFailed(_: Bind) ⇒
       context stop self
 
-    case c@Connected(remote, local) =>
+    case Connected(_, _) ⇒
       val handler = context.actorOf(Props[SimplisticHandler])
       val connection = sender()
       connection ! Register(handler)
@@ -53,23 +53,25 @@ class SimplisticHandler extends Actor {
         val files = Files.newDirectoryStream(Paths.get("/Users/jaros/Pictures/kiev-dnepr-2016")).iterator()
 
         val p = files.next()
-        sender() ! Write(ByteString(Files.readAllBytes(p)), ServerRunner.Ack(p))
+        sender() ! Write(ByteString(Files.readAllBytes(p)), ServerRunner.Ack(p.toString))
 
         context become {
-          case ServerRunner.Ack(path) =>
+          case ServerRunner.Ack(path) ⇒
             log.info(s"successfully transferred file $path")
             if (!files.hasNext) {
-              sender() ! Write(ByteString("all-sent"))
+              sender() ! Write(ByteString("all-sent"), ServerRunner.Ack("finish"))
               context unbecome()
             } else {
               val p = files.next()
-              sender() ! Write(ByteString(Files.readAllBytes(p)), ServerRunner.Ack(p))
+              sender() ! Write(ByteString(Files.readAllBytes(p)), ServerRunner.Ack(p.toString))
             }
         }
       } else {
         sender() ! Write(data)
       }
-    case PeerClosed =>
+    case ServerRunner.Ack("finish") ⇒
+      log.info("successfully transferred all files")
+    case PeerClosed ⇒
       context stop self
   }
 }

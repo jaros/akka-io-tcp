@@ -28,10 +28,7 @@ class ServerSpec() extends TestKit(ActorSystem("ServerSpec")) with ImplicitSende
 
       fishForMessage(10.seconds) {
         case data: ByteString ⇒
-          if (data.utf8String == "all-sent") {
-            println("finished")
-            true
-          } else false
+          data.utf8String == "all-sent"
       }
 
     }

@@ -54,12 +54,12 @@ class Client(remote: InetSocketAddress, listener: ActorRef) extends Actor {
 
   IO(Tcp) ! Connect(remote)
 
-  def receive = {
+  def receive: Receive = {
     case CommandFailed(_: Connect) ⇒
       listener ! "connect failed"
       context stop self
 
-    case c@Connected(remote, local) ⇒
+    case c@Connected(_, _) ⇒
       listener ! c
       val connection = sender()
       connection ! Register(self, keepOpenOnPeerClosed = false)
