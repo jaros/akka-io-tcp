@@ -1,12 +1,14 @@
 package net.chat
 
 import java.net.InetSocketAddress
-import java.nio.file.{Files, Paths}
+import java.nio.ByteBuffer
+import java.nio.file.{Files, Path, Paths}
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.event.Logging
 import akka.io.{IO, Tcp}
 import akka.util.ByteString
+import net.chat.ServerRunner.Ack
 
 
 object ServerRunner extends App {
@@ -26,7 +28,7 @@ class Server extends Actor {
 
   IO(Tcp) ! Bind(self, new InetSocketAddress("localhost", 9999))
 
-  def receive = {
+  def receive: Receive = {
     case b@Bound(_) ⇒
       context.parent ! b
 
@@ -47,31 +49,37 @@ class SimplisticHandler extends Actor {
 
   val log = Logging(context.system, this)
 
-  def receive = {
+  def receive: Receive = {
     case Received(data) =>
       if (data.utf8String == "start") {
         val files = Files.newDirectoryStream(Paths.get("/Users/jaros/Pictures/kiev-dnepr-2016")).iterator()
 
         val p = files.next()
-        sender() ! Write(ByteString(Files.readAllBytes(p)), ServerRunner.Ack(p.toString))
+        sender() ! pack(p)
 
         context become {
           case ServerRunner.Ack(path) ⇒
             log.info(s"successfully transferred file $path")
             if (!files.hasNext) {
-              sender() ! Write(ByteString("all-sent"), ServerRunner.Ack("finish"))
+              sender() ! pack("all-sent")
               context unbecome()
             } else {
-              val p = files.next()
-              sender() ! Write(ByteString(Files.readAllBytes(p)), ServerRunner.Ack(p.toString))
+              sender() ! pack(files.next())
             }
         }
       } else {
         sender() ! Write(data)
       }
-    case ServerRunner.Ack("finish") ⇒
-      log.info("successfully transferred all files")
+    case ServerRunner.Ack(msg) ⇒
+      log.info(s"ack: $msg")
     case PeerClosed ⇒
       context stop self
   }
+
+  def pack(msg: String): Write = pack(msg, ByteString(msg))
+
+  def pack(path: Path): Write = pack(path.toString, ByteString(Files.readAllBytes(path)))
+
+  def pack(msg: String, data: ByteString): Write =
+    Write(ByteString(ByteBuffer.allocate(4).putInt(data.length).array()) ++ data, Ack(msg))
 }

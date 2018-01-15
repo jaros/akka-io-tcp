@@ -8,6 +8,8 @@ import akka.io.Tcp.Connected
 import akka.io.{IO, Tcp}
 import akka.util.ByteString
 
+import scala.annotation.tailrec
+
 object ClientRunner extends App {
   val system: ActorSystem = ActorSystem("chatClient")
 
@@ -54,6 +56,17 @@ class Client(remote: InetSocketAddress, listener: ActorRef) extends Actor {
 
   IO(Tcp) ! Connect(remote)
 
+  @tailrec
+  private def unpackAndSend(data: ByteString): Unit = {
+    val msgLength = data.take(4).asByteBuffer.getInt
+    val msgBody = data.drop(4)
+    val message = msgBody.take(msgLength)
+    listener ! message
+    if (msgBody.length > msgLength) {
+      unpackAndSend(msgBody.drop(msgLength))
+    }
+  }
+
   def receive: Receive = {
     case CommandFailed(_: Connect) ⇒
       listener ! "connect failed"
@@ -70,7 +83,7 @@ class Client(remote: InetSocketAddress, listener: ActorRef) extends Actor {
           // O/S buffer was full
           listener ! "write failed"
         case Received(data) ⇒
-          listener ! data
+          unpackAndSend(data)
         case "close" ⇒
           connection ! Close
         case _: ConnectionClosed ⇒
